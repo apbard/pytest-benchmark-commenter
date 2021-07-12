@@ -42,6 +42,8 @@ module.exports =
 /******/ 		// Load entry module and return exports
 /******/ 		return __webpack_require__(198);
 /******/ 	};
+/******/ 	// initialize runtime
+/******/ 	runtime(__webpack_require__);
 /******/
 /******/ 	// run startup
 /******/ 	return startup();
@@ -709,7 +711,7 @@ function checkMode (stat, options) {
 /***/ }),
 
 /***/ 198:
-/***/ (function(__unusedmodule, __unusedexports, __webpack_require__) {
+/***/ (function(__unusedmodule, exports, __webpack_require__) {
 
 "use strict";
 
@@ -722,65 +724,89 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+Object.defineProperty(exports, "__esModule", { value: true });
 const core = __webpack_require__(470);
 const github = __webpack_require__(469);
 const fs = __webpack_require__(747);
+const markdown_table_1 = __webpack_require__(366);
+const permissableMetrics = [
+    "iterations",
+    "max",
+    "mean",
+    "median",
+    "min",
+    "ops",
+    "outliers",
+    "rounds",
+    "stddev",
+];
+const permissableTimeUnits = [
+    "seconds",
+    "miliseconds",
+    "microseconds",
+    "auto",
+];
 class Benchmark {
-    constructor(benchmark, timeUnit) {
-        this.timeResolutions = {
-            seconds: 1,
-            miliseconds: 1000,
-            microseconds: 1000000,
-        };
+    constructor(benchmark) {
         const stats = benchmark["stats"];
-        this.max = this.setTimeScale(stats["max"], timeUnit).toFixed(2);
-        this.min = this.setTimeScale(stats["min"], timeUnit).toFixed(2);
-        this.mean = this.setTimeScale(stats["mean"], timeUnit).toFixed(2);
-        this.stddev = this.setTimeScale(stats["stddev"], timeUnit).toFixed(2);
-    }
-    setTimeScale(seconds, timeResolution) {
-        return seconds * this.timeResolutions[timeResolution];
+        this.iterations = stats["iterations"];
+        this.max = stats["max"];
+        this.mean = stats["mean"];
+        this.median = stats["mean"];
+        this.min = stats["min"];
+        this.ops = stats["ops"];
+        this.outliers = stats["outliers"];
+        this.rounds = stats["rounds"];
+        this.stddev = stats["stddev"];
+        this.total = status["total"];
     }
 }
-function readJSON(filename, timeUnit) {
+function readJSON(filename) {
     const rawdata = fs.readFileSync(filename);
     const benchmarkJSON = JSON.parse(rawdata);
     let benchmarks = {};
     for (const benchmark of benchmarkJSON["benchmarks"]) {
-        benchmarks[benchmark["fullname"]] = new Benchmark(benchmark, timeUnit);
+        benchmarks[benchmark["fullname"]] = new Benchmark(benchmark);
     }
     return benchmarks;
 }
-function createMessage(benchmarks, oldBenchmarks, timeUnit) {
-    let message = "## Result of Benchmark Tests\n";
-    // Table Title
-    message += "| Benchmark (" + timeUnit + ") | Min | Max | Mean |";
-    if (oldBenchmarks !== undefined) {
-        message += " Mean on Repo `HEAD` |";
-    }
-    message += "\n";
-    // Table Column Definition
-    message += "| :--- | :---: | :---: | :---: |";
-    if (oldBenchmarks !== undefined) {
-        message += " :---: |";
-    }
-    message += "\n";
-    // Table Rows
+function setTimeScale(seconds, timeResolution) {
+    const timeResolutions = {
+        seconds: 1,
+        miliseconds: 1000,
+        microseconds: 1000000,
+    };
+    return seconds * timeResolutions[timeResolution];
+}
+function createMessage(benchmarks, oldBenchmarks) {
+    const oldBenchmarkPresent = oldBenchmarks !== undefined ? true : false;
+    const title = "## Result of Benchmark Tests";
+    let table = [
+        [
+            "Benchmark",
+            "Min",
+            "Max",
+            "Mean",
+            ...(oldBenchmarkPresent ? ["Mean on Repo `HEAD`"] : []),
+        ],
+    ];
     for (const benchmarkName in benchmarks) {
         const benchmark = benchmarks[benchmarkName];
-        message += `| ${benchmarkName}`;
-        message += `| ${benchmark.min}`;
-        message += `| ${benchmark.max}`;
-        message += `| ${benchmark.mean} `;
-        message += `+- ${benchmark.stddev} `;
-        if (oldBenchmarks !== undefined) {
-            const oldBenchmark = oldBenchmarks[benchmarkName];
-            message += `| ${oldBenchmark.mean} `;
-            message += `+- ${oldBenchmark.stddev} `;
-        }
-        message += "|\n";
+        table.push([
+            benchmarkName,
+            benchmark.min,
+            benchmark.max,
+            benchmark.mean + "+-" + benchmark.stddev,
+            ...(oldBenchmarkPresent
+                ? [
+                    oldBenchmarks[benchmarkName].mean +
+                        "+-" +
+                        oldBenchmarks[benchmarkName].stddev,
+                ]
+                : []),
+        ]);
     }
-    return message;
+    return title + "\n" + markdown_table_1.markdownTable(table);
 }
 function run() {
     return __awaiter(this, void 0, void 0, function* () {
@@ -790,19 +816,39 @@ function run() {
         }
         const githubToken = core.getInput("token");
         const benchmarkFileName = core.getInput("benchmark-file");
-        const benchmarkTimeUnit = core.getInput("benchmark-time-unit");
         const oldBenchmarkFileName = core.getInput("comparison-benchmark-file");
-        const benchmarks = readJSON(benchmarkFileName, benchmarkTimeUnit);
+        // const benchmarkTimeUnit = core.getInput("benchmark-time-unit");
+        // const benchmarkMetrics: string[] = core
+        //   .getInput("benchmark-metrics")
+        //   .split(",")
+        //   .filter((x) => x !== "");
+        // if (
+        //   benchmarkMetrics.filter((x) => !permissableMetrics.includes(x)).length > 0
+        // ) {
+        //   core.setFailed(
+        //     "Invalid metrics requested - valid metrics are: " +
+        //       permissableMetrics.join(", ")
+        //   );
+        //   return;
+        // }
+        // if (!permissableTimeUnits.includes(benchmarkTimeUnit)) {
+        //   core.setFailed(
+        //     "Invalid time unit requested - valid time units are: " +
+        //       permissableTimeUnits.join(", ")
+        //   );
+        //   return;
+        // }
+        const benchmarks = readJSON(benchmarkFileName);
         let oldBenchmarks = undefined;
         if (oldBenchmarkFileName) {
             try {
-                oldBenchmarks = readJSON(oldBenchmarkFileName, benchmarkTimeUnit);
+                oldBenchmarks = readJSON(oldBenchmarkFileName);
             }
             catch (error) {
                 console.log("Can not read comparison file. Continue without it.");
             }
         }
-        const message = createMessage(benchmarks, oldBenchmarks, benchmarkTimeUnit);
+        const message = createMessage(benchmarks, oldBenchmarks);
         console.log(message);
         const context = github.context;
         const pullRequestNumber = context.payload.pull_request.number;
@@ -2759,6 +2805,273 @@ function register (state, name, method, options) {
         return registered.hook.bind(null, method, options)
       }, method)()
     })
+}
+
+
+/***/ }),
+
+/***/ 366:
+/***/ (function(__unusedmodule, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export (binding) */ __webpack_require__.d(__webpack_exports__, "markdownTable", function() { return markdownTable; });
+/**
+ * @typedef MarkdownTableOptions
+ * @property {string|null|Array.<string|null|undefined>} [align]
+ * @property {boolean} [padding=true]
+ * @property {boolean} [delimiterStart=true]
+ * @property {boolean} [delimiterStart=true]
+ * @property {boolean} [delimiterEnd=true]
+ * @property {boolean} [alignDelimiters=true]
+ * @property {(value: string) => number} [stringLength]
+ */
+
+/**
+ * Create a table from a matrix of strings.
+ *
+ * @param {Array.<Array.<string|null|undefined>>} table
+ * @param {MarkdownTableOptions} [options]
+ * @returns {string}
+ */
+function markdownTable(table, options) {
+  const settings = options || {}
+  const align = (settings.align || []).concat()
+  const stringLength = settings.stringLength || defaultStringLength
+  /** @type {number[]} Character codes as symbols for alignment per column. */
+  const alignments = []
+  let rowIndex = -1
+  /** @type {string[][]} Cells per row. */
+  const cellMatrix = []
+  /** @type {number[][]} Sizes of each cell per row. */
+  const sizeMatrix = []
+  /** @type {number[]} */
+  const longestCellByColumn = []
+  let mostCellsPerRow = 0
+  /** @type {number} */
+  let columnIndex
+  /** @type {string[]} Cells of current row */
+  let row
+  /** @type {number[]} Sizes of current row */
+  let sizes
+  /** @type {number} Sizes of current cell */
+  let size
+  /** @type {string} Current cell */
+  let cell
+  /** @type {string[]} Chunks of current line. */
+  let line
+  /** @type {string} */
+  let before
+  /** @type {string} */
+  let after
+  /** @type {number} */
+  let code
+
+  // This is a superfluous loop if we don’t align delimiters, but otherwise we’d
+  // do superfluous work when aligning, so optimize for aligning.
+  while (++rowIndex < table.length) {
+    columnIndex = -1
+    row = []
+    sizes = []
+
+    if (table[rowIndex].length > mostCellsPerRow) {
+      mostCellsPerRow = table[rowIndex].length
+    }
+
+    while (++columnIndex < table[rowIndex].length) {
+      cell = serialize(table[rowIndex][columnIndex])
+
+      if (settings.alignDelimiters !== false) {
+        size = stringLength(cell)
+        sizes[columnIndex] = size
+
+        if (
+          longestCellByColumn[columnIndex] === undefined ||
+          size > longestCellByColumn[columnIndex]
+        ) {
+          longestCellByColumn[columnIndex] = size
+        }
+      }
+
+      row.push(cell)
+    }
+
+    cellMatrix[rowIndex] = row
+    sizeMatrix[rowIndex] = sizes
+  }
+
+  // Figure out which alignments to use.
+  columnIndex = -1
+
+  if (typeof align === 'object' && 'length' in align) {
+    while (++columnIndex < mostCellsPerRow) {
+      alignments[columnIndex] = toAlignment(align[columnIndex])
+    }
+  } else {
+    code = toAlignment(align)
+
+    while (++columnIndex < mostCellsPerRow) {
+      alignments[columnIndex] = code
+    }
+  }
+
+  // Inject the alignment row.
+  columnIndex = -1
+  row = []
+  sizes = []
+
+  while (++columnIndex < mostCellsPerRow) {
+    code = alignments[columnIndex]
+    before = ''
+    after = ''
+
+    if (code === 99 /* `c` */) {
+      before = ':'
+      after = ':'
+    } else if (code === 108 /* `l` */) {
+      before = ':'
+    } else if (code === 114 /* `r` */) {
+      after = ':'
+    }
+
+    // There *must* be at least one hyphen-minus in each alignment cell.
+    size =
+      settings.alignDelimiters === false
+        ? 1
+        : Math.max(
+            1,
+            longestCellByColumn[columnIndex] - before.length - after.length
+          )
+
+    cell = before + '-'.repeat(size) + after
+
+    if (settings.alignDelimiters !== false) {
+      size = before.length + size + after.length
+
+      if (size > longestCellByColumn[columnIndex]) {
+        longestCellByColumn[columnIndex] = size
+      }
+
+      sizes[columnIndex] = size
+    }
+
+    row[columnIndex] = cell
+  }
+
+  // Inject the alignment row.
+  cellMatrix.splice(1, 0, row)
+  sizeMatrix.splice(1, 0, sizes)
+
+  rowIndex = -1
+  /** @type {string[]} */
+  const lines = []
+
+  while (++rowIndex < cellMatrix.length) {
+    row = cellMatrix[rowIndex]
+    sizes = sizeMatrix[rowIndex]
+    columnIndex = -1
+    line = []
+
+    while (++columnIndex < mostCellsPerRow) {
+      cell = row[columnIndex] || ''
+      before = ''
+      after = ''
+
+      if (settings.alignDelimiters !== false) {
+        size = longestCellByColumn[columnIndex] - (sizes[columnIndex] || 0)
+        code = alignments[columnIndex]
+
+        if (code === 114 /* `r` */) {
+          before = ' '.repeat(size)
+        } else if (code === 99 /* `c` */) {
+          if (size % 2) {
+            before = ' '.repeat(size / 2 + 0.5)
+            after = ' '.repeat(size / 2 - 0.5)
+          } else {
+            before = ' '.repeat(size / 2)
+            after = before
+          }
+        } else {
+          after = ' '.repeat(size)
+        }
+      }
+
+      if (settings.delimiterStart !== false && !columnIndex) {
+        line.push('|')
+      }
+
+      if (
+        settings.padding !== false &&
+        // Don’t add the opening space if we’re not aligning and the cell is
+        // empty: there will be a closing space.
+        !(settings.alignDelimiters === false && cell === '') &&
+        (settings.delimiterStart !== false || columnIndex)
+      ) {
+        line.push(' ')
+      }
+
+      if (settings.alignDelimiters !== false) {
+        line.push(before)
+      }
+
+      line.push(cell)
+
+      if (settings.alignDelimiters !== false) {
+        line.push(after)
+      }
+
+      if (settings.padding !== false) {
+        line.push(' ')
+      }
+
+      if (
+        settings.delimiterEnd !== false ||
+        columnIndex !== mostCellsPerRow - 1
+      ) {
+        line.push('|')
+      }
+    }
+
+    lines.push(
+      settings.delimiterEnd === false
+        ? line.join('').replace(/ +$/, '')
+        : line.join('')
+    )
+  }
+
+  return lines.join('\n')
+}
+
+/**
+ * @param {string|null|undefined} [value]
+ * @returns {string}
+ */
+function serialize(value) {
+  return value === null || value === undefined ? '' : String(value)
+}
+
+/**
+ * @param {string} value
+ * @returns {number}
+ */
+function defaultStringLength(value) {
+  return value.length
+}
+
+/**
+ * @param {string|null|undefined} value
+ * @returns {number}
+ */
+function toAlignment(value) {
+  const code = typeof value === 'string' ? value.charCodeAt(0) : 0
+
+  return code === 67 /* `C` */ || code === 99 /* `c` */
+    ? 99 /* `c` */
+    : code === 76 /* `L` */ || code === 108 /* `l` */
+    ? 108 /* `l` */
+    : code === 82 /* `R` */ || code === 114 /* `r` */
+    ? 114 /* `r` */
+    : 0
 }
 
 
@@ -10174,4 +10487,31 @@ function onceStrict (fn) {
 
 /***/ })
 
-/******/ });
+/******/ },
+/******/ function(__webpack_require__) { // webpackRuntimeModules
+/******/ 	"use strict";
+/******/ 
+/******/ 	/* webpack/runtime/make namespace object */
+/******/ 	!function() {
+/******/ 		// define __esModule on exports
+/******/ 		__webpack_require__.r = function(exports) {
+/******/ 			if(typeof Symbol !== 'undefined' && Symbol.toStringTag) {
+/******/ 				Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' });
+/******/ 			}
+/******/ 			Object.defineProperty(exports, '__esModule', { value: true });
+/******/ 		};
+/******/ 	}();
+/******/ 	
+/******/ 	/* webpack/runtime/define property getter */
+/******/ 	!function() {
+/******/ 		// define getter function for harmony exports
+/******/ 		var hasOwnProperty = Object.prototype.hasOwnProperty;
+/******/ 		__webpack_require__.d = function(exports, name, getter) {
+/******/ 			if(!hasOwnProperty.call(exports, name)) {
+/******/ 				Object.defineProperty(exports, name, { enumerable: true, get: getter });
+/******/ 			}
+/******/ 		};
+/******/ 	}();
+/******/ 	
+/******/ }
+);

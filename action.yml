@@ -9,10 +9,14 @@ inputs:
     description: 'Where to find the json output of pytest-benchmark'
     required: true
     default: 'output.json'
-  benchmark-time-unit:
-    description: 'Time unit to be used in the resulting benchmark comment'
-    required: false
-    default: 'seconds'
+  # benchmark-time-unit:
+  #   description: 'Time unit to be used in the resulting benchmark comment'
+  #   required: false
+  #   default: 'seconds'
+  # benchmark-metrics:
+  #   description: 'Metrics to display in table'
+  #   required: false
+  #   default: 'min,max,mean,stddev'
   comparison-benchmark-file:
     description: 'Where to find the json output of an old pytest-benchmark, for comparison. Empty for no comparison.'
     required: false

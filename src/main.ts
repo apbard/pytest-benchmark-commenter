@@ -1,80 +1,105 @@
 const core = require("@actions/core");
 const github = require("@actions/github");
 const fs = require("fs");
+import { markdownTable } from "markdown-table";
 
+const permissableMetrics = [
+  "iterations",
+  "max",
+  "mean",
+  "median",
+  "min",
+  "ops",
+  "outliers",
+  "rounds",
+  "stddev",
+];
+const permissableTimeUnits = [
+  "seconds",
+  "miliseconds",
+  "microseconds",
+  "auto",
+];
 
 class Benchmark {
+  iterations: number;
   max: number;
-  min: number;
   mean: number;
+  median: number;
+  min: number;
+  ops: number;
+  outliers: string;
+  rounds: number;
   stddev: number;
-  timeResolutions = {
-    seconds: 1,
-    miliseconds: 1000,
-    microseconds: 1000000,
-  }
+  total: number;
 
-  setTimeScale(seconds: number, timeResolution: string): any {
-    return seconds * this.timeResolutions[timeResolution];
-  }
-
-  constructor(benchmark: any, timeUnit: string) {
+  constructor(benchmark: any) {
     const stats = benchmark["stats"];
-    this.max = this.setTimeScale(stats["max"], timeUnit).toFixed(2);
-    this.min = this.setTimeScale(stats["min"], timeUnit).toFixed(2);
-    this.mean = this.setTimeScale(stats["mean"], timeUnit).toFixed(2);
-    this.stddev = this.setTimeScale(stats["stddev"], timeUnit).toFixed(2);
+    this.iterations = stats["iterations"];
+    this.max = stats["max"];
+    this.mean = stats["mean"];
+    this.median = stats["mean"];
+    this.min = stats["min"];
+    this.ops = stats["ops"];
+    this.outliers = stats["outliers"];
+    this.rounds = stats["rounds"];
+    this.stddev = stats["stddev"];
+    this.total = status["total"];
   }
 }
 
-function readJSON(filename: string, timeUnit: string): any {
+function readJSON(filename: string): any {
   const rawdata = fs.readFileSync(filename);
   const benchmarkJSON = JSON.parse(rawdata);
 
   let benchmarks: { [name: string]: Benchmark } = {};
   for (const benchmark of benchmarkJSON["benchmarks"]) {
-    benchmarks[benchmark["fullname"]] = new Benchmark(benchmark, timeUnit);
+    benchmarks[benchmark["fullname"]] = new Benchmark(benchmark);
   }
 
   return benchmarks;
 }
 
-function createMessage(benchmarks: any, oldBenchmarks: any, timeUnit: string) {
-  let message = "## Result of Benchmark Tests\n";
+function setTimeScale(seconds: number, timeResolution: string): any {
+  const timeResolutions = {
+    seconds: 1,
+    miliseconds: 1000,
+    microseconds: 1000000,
+  };
+  return seconds * timeResolutions[timeResolution];
+}
 
-  // Table Title
-  message += "| Benchmark ("+ timeUnit+") | Min | Max | Mean |";
-  if (oldBenchmarks !== undefined) {
-    message += " Mean on Repo `HEAD` |";
-  }
-  message += "\n";
+function createMessage(benchmarks: any, oldBenchmarks: any) {
+  const oldBenchmarkPresent = oldBenchmarks !== undefined ? true : false;
+  const title = "## Result of Benchmark Tests";
+  let table: string[][] = [
+    [
+      "Benchmark",
+      "Min",
+      "Max",
+      "Mean",
+      ...(oldBenchmarkPresent ? ["Mean on Repo `HEAD`"] : []),
+    ],
+  ];
 
-  // Table Column Definition
-  message += "| :--- | :---: | :---: | :---: |";
-  if (oldBenchmarks !== undefined) {
-    message += " :---: |";
-  }
-  message += "\n";
-
-  // Table Rows
   for (const benchmarkName in benchmarks) {
     const benchmark = benchmarks[benchmarkName];
-
-    message += `| ${benchmarkName}`;
-    message += `| ${benchmark.min}`;
-    message += `| ${benchmark.max}`;
-    message += `| ${benchmark.mean} `;
-    message += `+- ${benchmark.stddev} `;
-
-    if (oldBenchmarks !== undefined) {
-      const oldBenchmark = oldBenchmarks[benchmarkName];
-      message += `| ${oldBenchmark.mean} `;
-      message += `+- ${oldBenchmark.stddev} `;
-    }
-    message += "|\n";
+    table.push([
+      benchmarkName,
+      benchmark.min,
+      benchmark.max,
+      benchmark.mean + "+-" + benchmark.stddev,
+      ...(oldBenchmarkPresent
+        ? [
+            oldBenchmarks[benchmarkName].mean +
+              "+-" +
+              oldBenchmarks[benchmarkName].stddev,
+          ]
+        : []),
+    ]);
   }
 
-  return message;
+  return title + "\n" + markdownTable(table);
 }
 
 async function run() {
@@ -85,19 +110,40 @@ async function run() {
 
   const githubToken = core.getInput("token");
   const benchmarkFileName = core.getInput("benchmark-file");
-  const benchmarkTimeUnit = core.getInput("benchmark-time-unit");
-  const oldBenchmarkFileName = core.getInput("comparison-benchmark-file");
 
-  const benchmarks = readJSON(benchmarkFileName, benchmarkTimeUnit);
+  const oldBenchmarkFileName = core.getInput("comparison-benchmark-file");
+  // const benchmarkTimeUnit = core.getInput("benchmark-time-unit");
+  // const benchmarkMetrics: string[] = core
+  //   .getInput("benchmark-metrics")
+  //   .split(",")
+  //   .filter((x) => x !== "");
+  // if (
+  //   benchmarkMetrics.filter((x) => !permissableMetrics.includes(x)).length > 0
+  // ) {
+  //   core.setFailed(
+  //     "Invalid metrics requested - valid metrics are: " +
+  //       permissableMetrics.join(", ")
+  //   );
+  //   return;
+  // }
+  // if (!permissableTimeUnits.includes(benchmarkTimeUnit)) {
+  //   core.setFailed(
+  //     "Invalid time unit requested - valid time units are: " +
+  //       permissableTimeUnits.join(", ")
+  //   );
+  //   return;
+  // }
+
+  const benchmarks = readJSON(benchmarkFileName);
   let oldBenchmarks = undefined;
   if (oldBenchmarkFileName) {
     try {
-      oldBenchmarks = readJSON(oldBenchmarkFileName, benchmarkTimeUnit);
+      oldBenchmarks = readJSON(oldBenchmarkFileName);
     } catch (error) {
       console.log("Can not read comparison file. Continue without it.");
     }
   }
-  const message = createMessage(benchmarks, oldBenchmarks, benchmarkTimeUnit);
+  const message = createMessage(benchmarks, oldBenchmarks);
   console.log(message);
 
   const context = github.context;
