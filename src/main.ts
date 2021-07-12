@@ -8,7 +8,7 @@ class Benchmark {
   min: number;
   mean: number;
   stddev: number;
-  timeResolutions: any = {
+  timeResolutions = {
     seconds: 1,
     miliseconds: 1000,
     microseconds: 1000000,
@@ -23,7 +23,7 @@ class Benchmark {
     this.max = this.setTimeScale(stats["max"], timeUnit).toFixed(2);
     this.min = this.setTimeScale(stats["min"], timeUnit).toFixed(2);
     this.mean = this.setTimeScale(stats["mean"], timeUnit).toFixed(2);
-    this.stddev = stats["stddev"].toFixed(2);
+    this.stddev = this.setTimeScale(stats["stddev"], timeUnit).toFixed(2);
   }
 }
 
@@ -39,11 +39,11 @@ function readJSON(filename: string, timeUnit: string): any {
   return benchmarks;
 }
 
-function createMessage(benchmarks: any, oldBenchmarks: any) {
+function createMessage(benchmarks: any, oldBenchmarks: any, timeUnit: string) {
   let message = "## Result of Benchmark Tests\n";
 
   // Table Title
-  message += "| Benchmark | Min | Max | Mean |";
+  message += "| Benchmark ("+ timeUnit+") | Min | Max | Mean |";
   if (oldBenchmarks !== undefined) {
     message += " Mean on Repo `HEAD` |";
   }
@@ -97,7 +97,7 @@ async function run() {
       console.log("Can not read comparison file. Continue without it.");
     }
   }
-  const message = createMessage(benchmarks, oldBenchmarks);
+  const message = createMessage(benchmarks, oldBenchmarks, benchmarkTimeUnit);
   console.log(message);
 
   const context = github.context;

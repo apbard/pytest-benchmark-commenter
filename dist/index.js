@@ -736,7 +736,7 @@ class Benchmark {
         this.max = this.setTimeScale(stats["max"], timeUnit).toFixed(2);
         this.min = this.setTimeScale(stats["min"], timeUnit).toFixed(2);
         this.mean = this.setTimeScale(stats["mean"], timeUnit).toFixed(2);
-        this.stddev = stats["stddev"].toFixed(2);
+        this.stddev = this.setTimeScale(stats["stddev"], timeUnit).toFixed(2);
     }
     setTimeScale(seconds, timeResolution) {
         return seconds * this.timeResolutions[timeResolution];
@@ -751,10 +751,10 @@ function readJSON(filename, timeUnit) {
     }
     return benchmarks;
 }
-function createMessage(benchmarks, oldBenchmarks) {
+function createMessage(benchmarks, oldBenchmarks, timeUnit) {
     let message = "## Result of Benchmark Tests\n";
     // Table Title
-    message += "| Benchmark | Min | Max | Mean |";
+    message += "| Benchmark (" + timeUnit + ") | Min | Max | Mean |";
     if (oldBenchmarks !== undefined) {
         message += " Mean on Repo `HEAD` |";
     }
@@ -802,7 +802,7 @@ function run() {
                 console.log("Can not read comparison file. Continue without it.");
             }
         }
-        const message = createMessage(benchmarks, oldBenchmarks);
+        const message = createMessage(benchmarks, oldBenchmarks, benchmarkTimeUnit);
         console.log(message);
         const context = github.context;
         const pullRequestNumber = context.payload.pull_request.number;
