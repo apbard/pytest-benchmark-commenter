@@ -2,28 +2,38 @@ const core = require("@actions/core");
 const github = require("@actions/github");
 const fs = require("fs");
 
-class Benchmark {
-  max : number;
-  min : number;
-  mean : number;
-  stddev : number;
 
-  constructor(benchmark: any) {
+class Benchmark {
+  max: number;
+  min: number;
+  mean: number;
+  stddev: number;
+  timeResolutions: any = {
+    seconds: 1,
+    miliseconds: 1000,
+    microseconds: 1000000,
+  }
+
+  setTimeScale(seconds: number, timeResolution: string): any {
+    return seconds * this.timeResolutions[timeResolution];
+  }
+
+  constructor(benchmark: any, timeUnit: string) {
     const stats = benchmark["stats"];
-    this.max = stats["max"].toFixed(2);
-    this.min = stats["min"].toFixed(2);
-    this.mean = stats["mean"].toFixed(2);
+    this.max = this.setTimeScale(stats["max"], timeUnit).toFixed(2);
+    this.min = this.setTimeScale(stats["min"], timeUnit).toFixed(2);
+    this.mean = this.setTimeScale(stats["mean"], timeUnit).toFixed(2);
     this.stddev = stats["stddev"].toFixed(2);
   }
 }
 
-function readJSON(filename: string): any {
+function readJSON(filename: string, timeUnit: string): any {
   const rawdata = fs.readFileSync(filename);
   const benchmarkJSON = JSON.parse(rawdata);
 
-  let benchmarks : { [name: string] : Benchmark} = {};
-  for(const benchmark of benchmarkJSON["benchmarks"]) {
-    benchmarks[benchmark["fullname"]] = new Benchmark(benchmark);
+  let benchmarks: { [name: string]: Benchmark } = {};
+  for (const benchmark of benchmarkJSON["benchmarks"]) {
+    benchmarks[benchmark["fullname"]] = new Benchmark(benchmark, timeUnit);
   }
 
   return benchmarks;
@@ -34,15 +44,15 @@ function createMessage(benchmarks: any, oldBenchmarks: any) {
 
   // Table Title
   message += "| Benchmark | Min | Max | Mean |";
-  if(oldBenchmarks !== undefined) {
-    message += " Mean on Repo `HEAD` |"
+  if (oldBenchmarks !== undefined) {
+    message += " Mean on Repo `HEAD` |";
   }
   message += "\n";
 
   // Table Column Definition
   message += "| :--- | :---: | :---: | :---: |";
-  if(oldBenchmarks !== undefined) {
-    message += " :---: |"
+  if (oldBenchmarks !== undefined) {
+    message += " :---: |";
   }
   message += "\n";
 
@@ -56,12 +66,12 @@ function createMessage(benchmarks: any, oldBenchmarks: any) {
     message += `| ${benchmark.mean} `;
     message += `+- ${benchmark.stddev} `;
 
-    if(oldBenchmarks !== undefined) {
-      const oldBenchmark = oldBenchmarks[benchmarkName]
+    if (oldBenchmarks !== undefined) {
+      const oldBenchmark = oldBenchmarks[benchmarkName];
       message += `| ${oldBenchmark.mean} `;
       message += `+- ${oldBenchmark.stddev} `;
     }
-    message += "|\n"
+    message += "|\n";
   }
 
   return message;
@@ -75,13 +85,14 @@ async function run() {
 
   const githubToken = core.getInput("token");
   const benchmarkFileName = core.getInput("benchmark-file");
+  const benchmarkTimeUnit = core.getInput("benchmark-time-unit");
   const oldBenchmarkFileName = core.getInput("comparison-benchmark-file");
 
-  const benchmarks = readJSON(benchmarkFileName);
+  const benchmarks = readJSON(benchmarkFileName, benchmarkTimeUnit);
   let oldBenchmarks = undefined;
-  if(oldBenchmarkFileName) {
+  if (oldBenchmarkFileName) {
     try {
-      oldBenchmarks = readJSON(oldBenchmarkFileName);
+      oldBenchmarks = readJSON(oldBenchmarkFileName, benchmarkTimeUnit);
     } catch (error) {
       console.log("Can not read comparison file. Continue without it.");
     }
@@ -111,15 +122,15 @@ async function run() {
     await octokit.issues.updateComment({
       ...context.repo,
       comment_id: comment.id,
-      body: message
+      body: message,
     });
   } else {
     await octokit.issues.createComment({
       ...context.repo,
       issue_number: pullRequestNumber,
-      body: message
+      body: message,
     });
   }
 }
 
-run().catch(error => core.setFailed("Workflow failed! " + error.message));
+run().catch((error) => core.setFailed("Workflow failed! " + error.message));
