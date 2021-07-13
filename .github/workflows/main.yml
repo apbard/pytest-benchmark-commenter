@@ -21,4 +21,6 @@ jobs:
         uses: ./ # Uses an action in the root directory
         with:
           benchmark-file: "output.json"
+          benchmark-name: "name"
+          benchmark-time-unit: milliseconds 
           comparison-benchmark-file: "old_benchmark/output.json"

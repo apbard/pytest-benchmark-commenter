@@ -42,6 +42,8 @@ module.exports =
 /******/ 		// Load entry module and return exports
 /******/ 		return __webpack_require__(198);
 /******/ 	};
+/******/ 	// initialize runtime
+/******/ 	runtime(__webpack_require__);
 /******/
 /******/ 	// run startup
 /******/ 	return startup();
@@ -387,10 +389,72 @@ module.exports = windowsRelease;
 
 /***/ }),
 
+/***/ 82:
+/***/ (function(__unusedmodule, exports) {
+
+"use strict";
+
+// We use any as a valid input type
+/* eslint-disable @typescript-eslint/no-explicit-any */
+Object.defineProperty(exports, "__esModule", { value: true });
+/**
+ * Sanitizes an input into a string so it can be passed into issueCommand safely
+ * @param input input to sanitize into a string
+ */
+function toCommandValue(input) {
+    if (input === null || input === undefined) {
+        return '';
+    }
+    else if (typeof input === 'string' || input instanceof String) {
+        return input;
+    }
+    return JSON.stringify(input);
+}
+exports.toCommandValue = toCommandValue;
+//# sourceMappingURL=utils.js.map
+
+/***/ }),
+
 /***/ 87:
 /***/ (function(module) {
 
 module.exports = require("os");
+
+/***/ }),
+
+/***/ 102:
+/***/ (function(__unusedmodule, exports, __webpack_require__) {
+
+"use strict";
+
+// For internal use, subject to change.
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (Object.hasOwnProperty.call(mod, k)) result[k] = mod[k];
+    result["default"] = mod;
+    return result;
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+// We use any as a valid input type
+/* eslint-disable @typescript-eslint/no-explicit-any */
+const fs = __importStar(__webpack_require__(747));
+const os = __importStar(__webpack_require__(87));
+const utils_1 = __webpack_require__(82);
+function issueCommand(command, message) {
+    const filePath = process.env[`GITHUB_${command}`];
+    if (!filePath) {
+        throw new Error(`Unable to find environment variable for file command ${command}`);
+    }
+    if (!fs.existsSync(filePath)) {
+        throw new Error(`Missing file at path: ${filePath}`);
+    }
+    fs.appendFileSync(filePath, `${utils_1.toCommandValue(message)}${os.EOL}`, {
+        encoding: 'utf8'
+    });
+}
+exports.issueCommand = issueCommand;
+//# sourceMappingURL=file-command.js.map
 
 /***/ }),
 
@@ -647,7 +711,7 @@ function checkMode (stat, options) {
 /***/ }),
 
 /***/ 198:
-/***/ (function(__unusedmodule, __unusedexports, __webpack_require__) {
+/***/ (function(__unusedmodule, exports, __webpack_require__) {
 
 "use strict";
 
@@ -660,57 +724,86 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+Object.defineProperty(exports, "__esModule", { value: true });
 const core = __webpack_require__(470);
 const github = __webpack_require__(469);
 const fs = __webpack_require__(747);
+const markdown_table_1 = __webpack_require__(366);
+const permissableMetrics = [
+    "iterations",
+    "max",
+    "mean",
+    "median",
+    "min",
+    "ops",
+    "outliers",
+    "rounds",
+    "stddev",
+];
+const permissableTimeUnits = {
+    seconds: {
+        unit: "s",
+        factor: 1,
+    },
+    milliseconds: { unit: "ms", factor: 1000 },
+    microseconds: {
+        unit: "us",
+        factor: 1000000,
+    },
+};
 class Benchmark {
-    constructor(benchmark) {
+    constructor(benchmark, timeFactor) {
         const stats = benchmark["stats"];
-        this.max = stats["max"].toFixed(2);
-        this.min = stats["min"].toFixed(2);
-        this.mean = stats["mean"].toFixed(2);
-        this.stddev = stats["stddev"].toFixed(2);
+        this.iterations = stats["iterations"];
+        this.max = this.timeUnitNormalisation(stats["max"], timeFactor);
+        this.mean = this.timeUnitNormalisation(stats["mean"], timeFactor);
+        this.median = this.timeUnitNormalisation(stats["median"], timeFactor);
+        this.min = this.timeUnitNormalisation(stats["min"], timeFactor);
+        this.ops = stats["ops"].toFixed(4);
+        this.rounds = stats["rounds"];
+        this.stddev = this.timeUnitNormalisation(stats["stddev"], timeFactor);
+    }
+    timeUnitNormalisation(metric, timeFactor) {
+        const localFactor = permissableTimeUnits[timeFactor];
+        return (metric * localFactor.factor).toFixed(2) + " " + localFactor.unit;
     }
 }
-function readJSON(filename) {
+function readJSON(filename, timeUnit, benchmarkName) {
     const rawdata = fs.readFileSync(filename);
     const benchmarkJSON = JSON.parse(rawdata);
     let benchmarks = {};
     for (const benchmark of benchmarkJSON["benchmarks"]) {
-        benchmarks[benchmark["fullname"]] = new Benchmark(benchmark);
+        benchmarks[benchmark[benchmarkName]] = new Benchmark(benchmark, timeUnit);
     }
     return benchmarks;
 }
-function createMessage(benchmarks, oldBenchmarks) {
-    let message = "## Result of Benchmark Tests\n";
-    // Table Title
-    message += "| Benchmark | Min | Max | Mean |";
+function createMessage(benchmarks, oldBenchmarks, metrics, compareMetric) {
+    const title = "## Result of Benchmark Tests";
+    let table = [];
+    // Header building
+    let headers = ["Benchmark", ...metrics];
     if (oldBenchmarks !== undefined) {
-        message += " Mean on Repo `HEAD` |";
+        headers.push(...[compareMetric + " on Repo `HEAD`", "change"]);
     }
-    message += "\n";
-    // Table Column Definition
-    message += "| :--- | :---: | :---: | :---: |";
-    if (oldBenchmarks !== undefined) {
-        message += " :---: |";
-    }
-    message += "\n";
-    // Table Rows
+    table.push(headers);
+    // Table Rows per Benchmark
     for (const benchmarkName in benchmarks) {
         const benchmark = benchmarks[benchmarkName];
-        message += `| ${benchmarkName}`;
-        message += `| ${benchmark.min}`;
-        message += `| ${benchmark.max}`;
-        message += `| ${benchmark.mean} `;
-        message += `+- ${benchmark.stddev} `;
-        if (oldBenchmarks !== undefined) {
-            const oldBenchmark = oldBenchmarks[benchmarkName];
-            message += `| ${oldBenchmark.mean} `;
-            message += `+- ${oldBenchmark.stddev} `;
+        let row = [benchmarkName];
+        for (const metric of metrics) {
+            row.push(benchmark[metric]);
         }
-        message += "|\n";
+        if (oldBenchmarks !== undefined) {
+            row.push(...[
+                oldBenchmarks[benchmarkName][compareMetric],
+                ((oldBenchmarks[benchmarkName][compareMetric] /
+                    benchmark[compareMetric]) *
+                    100).toFixed(2) + "%",
+            ]);
+        }
+        table.push(row);
     }
-    return message;
+    return title + "\n" + markdown_table_1.markdownTable(table);
 }
 function run() {
     return __awaiter(this, void 0, void 0, function* () {
@@ -721,17 +814,48 @@ function run() {
         const githubToken = core.getInput("token");
         const benchmarkFileName = core.getInput("benchmark-file");
         const oldBenchmarkFileName = core.getInput("comparison-benchmark-file");
-        const benchmarks = readJSON(benchmarkFileName);
+        const oldBenchmarkMetric = core.getInput("comparison-benchmark-metric");
+        const benchmarkName = core.getInput("benchmark-name");
+        const benchmarkTimeUnit = core.getInput("benchmark-time-unit");
+        const benchmarkMetrics = core
+            .getInput("benchmark-metrics")
+            .split(",")
+            .filter((x) => x !== "");
+        // Ugly work to try to validate strings as multiple choice answers
+        if (benchmarkMetrics.filter((x) => !permissableMetrics.includes(x)).length > 0) {
+            core.setFailed("Invalid metrics requested " +
+                benchmarkMetrics.join(", ") +
+                " - valid metrics are: " +
+                permissableMetrics.join(", "));
+            return;
+        }
+        if (!permissableMetrics.includes(oldBenchmarkMetric)) {
+            core.setFailed("Invalid metrics requested " +
+                oldBenchmarkMetric +
+                " - valid metrics are: " +
+                permissableMetrics.join(", "));
+            return;
+        }
+        if (!Object.keys(permissableTimeUnits).includes(benchmarkTimeUnit)) {
+            core.setFailed("Invalid time unit requested - valid time units are: " +
+                Object.keys(permissableTimeUnits).join(", "));
+            return;
+        }
+        if (!["name", "fullname"].includes(benchmarkName)) {
+            core.setFailed("Invalid benchmark name - valid name choices: name, fullname");
+            return;
+        }
+        const benchmarks = readJSON(benchmarkFileName, benchmarkTimeUnit, benchmarkName);
         let oldBenchmarks = undefined;
         if (oldBenchmarkFileName) {
             try {
-                oldBenchmarks = readJSON(oldBenchmarkFileName);
+                oldBenchmarks = readJSON(oldBenchmarkFileName, benchmarkTimeUnit, benchmarkName);
             }
             catch (error) {
                 console.log("Can not read comparison file. Continue without it.");
             }
         }
-        const message = createMessage(benchmarks, oldBenchmarks);
+        const message = createMessage(benchmarks, oldBenchmarks, benchmarkMetrics, oldBenchmarkMetric);
         console.log(message);
         const context = github.context;
         const pullRequestNumber = context.payload.pull_request.number;
@@ -750,7 +874,7 @@ function run() {
         }
     });
 }
-run().catch(error => core.setFailed("Workflow failed! " + error.message));
+run().catch((error) => core.setFailed("Workflow failed! " + error.message));
 
 
 /***/ }),
@@ -2693,6 +2817,273 @@ function register (state, name, method, options) {
 
 /***/ }),
 
+/***/ 366:
+/***/ (function(__unusedmodule, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export (binding) */ __webpack_require__.d(__webpack_exports__, "markdownTable", function() { return markdownTable; });
+/**
+ * @typedef MarkdownTableOptions
+ * @property {string|null|Array.<string|null|undefined>} [align]
+ * @property {boolean} [padding=true]
+ * @property {boolean} [delimiterStart=true]
+ * @property {boolean} [delimiterStart=true]
+ * @property {boolean} [delimiterEnd=true]
+ * @property {boolean} [alignDelimiters=true]
+ * @property {(value: string) => number} [stringLength]
+ */
+
+/**
+ * Create a table from a matrix of strings.
+ *
+ * @param {Array.<Array.<string|null|undefined>>} table
+ * @param {MarkdownTableOptions} [options]
+ * @returns {string}
+ */
+function markdownTable(table, options) {
+  const settings = options || {}
+  const align = (settings.align || []).concat()
+  const stringLength = settings.stringLength || defaultStringLength
+  /** @type {number[]} Character codes as symbols for alignment per column. */
+  const alignments = []
+  let rowIndex = -1
+  /** @type {string[][]} Cells per row. */
+  const cellMatrix = []
+  /** @type {number[][]} Sizes of each cell per row. */
+  const sizeMatrix = []
+  /** @type {number[]} */
+  const longestCellByColumn = []
+  let mostCellsPerRow = 0
+  /** @type {number} */
+  let columnIndex
+  /** @type {string[]} Cells of current row */
+  let row
+  /** @type {number[]} Sizes of current row */
+  let sizes
+  /** @type {number} Sizes of current cell */
+  let size
+  /** @type {string} Current cell */
+  let cell
+  /** @type {string[]} Chunks of current line. */
+  let line
+  /** @type {string} */
+  let before
+  /** @type {string} */
+  let after
+  /** @type {number} */
+  let code
+
+  // This is a superfluous loop if we don’t align delimiters, but otherwise we’d
+  // do superfluous work when aligning, so optimize for aligning.
+  while (++rowIndex < table.length) {
+    columnIndex = -1
+    row = []
+    sizes = []
+
+    if (table[rowIndex].length > mostCellsPerRow) {
+      mostCellsPerRow = table[rowIndex].length
+    }
+
+    while (++columnIndex < table[rowIndex].length) {
+      cell = serialize(table[rowIndex][columnIndex])
+
+      if (settings.alignDelimiters !== false) {
+        size = stringLength(cell)
+        sizes[columnIndex] = size
+
+        if (
+          longestCellByColumn[columnIndex] === undefined ||
+          size > longestCellByColumn[columnIndex]
+        ) {
+          longestCellByColumn[columnIndex] = size
+        }
+      }
+
+      row.push(cell)
+    }
+
+    cellMatrix[rowIndex] = row
+    sizeMatrix[rowIndex] = sizes
+  }
+
+  // Figure out which alignments to use.
+  columnIndex = -1
+
+  if (typeof align === 'object' && 'length' in align) {
+    while (++columnIndex < mostCellsPerRow) {
+      alignments[columnIndex] = toAlignment(align[columnIndex])
+    }
+  } else {
+    code = toAlignment(align)
+
+    while (++columnIndex < mostCellsPerRow) {
+      alignments[columnIndex] = code
+    }
+  }
+
+  // Inject the alignment row.
+  columnIndex = -1
+  row = []
+  sizes = []
+
+  while (++columnIndex < mostCellsPerRow) {
+    code = alignments[columnIndex]
+    before = ''
+    after = ''
+
+    if (code === 99 /* `c` */) {
+      before = ':'
+      after = ':'
+    } else if (code === 108 /* `l` */) {
+      before = ':'
+    } else if (code === 114 /* `r` */) {
+      after = ':'
+    }
+
+    // There *must* be at least one hyphen-minus in each alignment cell.
+    size =
+      settings.alignDelimiters === false
+        ? 1
+        : Math.max(
+            1,
+            longestCellByColumn[columnIndex] - before.length - after.length
+          )
+
+    cell = before + '-'.repeat(size) + after
+
+    if (settings.alignDelimiters !== false) {
+      size = before.length + size + after.length
+
+      if (size > longestCellByColumn[columnIndex]) {
+        longestCellByColumn[columnIndex] = size
+      }
+
+      sizes[columnIndex] = size
+    }
+
+    row[columnIndex] = cell
+  }
+
+  // Inject the alignment row.
+  cellMatrix.splice(1, 0, row)
+  sizeMatrix.splice(1, 0, sizes)
+
+  rowIndex = -1
+  /** @type {string[]} */
+  const lines = []
+
+  while (++rowIndex < cellMatrix.length) {
+    row = cellMatrix[rowIndex]
+    sizes = sizeMatrix[rowIndex]
+    columnIndex = -1
+    line = []
+
+    while (++columnIndex < mostCellsPerRow) {
+      cell = row[columnIndex] || ''
+      before = ''
+      after = ''
+
+      if (settings.alignDelimiters !== false) {
+        size = longestCellByColumn[columnIndex] - (sizes[columnIndex] || 0)
+        code = alignments[columnIndex]
+
+        if (code === 114 /* `r` */) {
+          before = ' '.repeat(size)
+        } else if (code === 99 /* `c` */) {
+          if (size % 2) {
+            before = ' '.repeat(size / 2 + 0.5)
+            after = ' '.repeat(size / 2 - 0.5)
+          } else {
+            before = ' '.repeat(size / 2)
+            after = before
+          }
+        } else {
+          after = ' '.repeat(size)
+        }
+      }
+
+      if (settings.delimiterStart !== false && !columnIndex) {
+        line.push('|')
+      }
+
+      if (
+        settings.padding !== false &&
+        // Don’t add the opening space if we’re not aligning and the cell is
+        // empty: there will be a closing space.
+        !(settings.alignDelimiters === false && cell === '') &&
+        (settings.delimiterStart !== false || columnIndex)
+      ) {
+        line.push(' ')
+      }
+
+      if (settings.alignDelimiters !== false) {
+        line.push(before)
+      }
+
+      line.push(cell)
+
+      if (settings.alignDelimiters !== false) {
+        line.push(after)
+      }
+
+      if (settings.padding !== false) {
+        line.push(' ')
+      }
+
+      if (
+        settings.delimiterEnd !== false ||
+        columnIndex !== mostCellsPerRow - 1
+      ) {
+        line.push('|')
+      }
+    }
+
+    lines.push(
+      settings.delimiterEnd === false
+        ? line.join('').replace(/ +$/, '')
+        : line.join('')
+    )
+  }
+
+  return lines.join('\n')
+}
+
+/**
+ * @param {string|null|undefined} [value]
+ * @returns {string}
+ */
+function serialize(value) {
+  return value === null || value === undefined ? '' : String(value)
+}
+
+/**
+ * @param {string} value
+ * @returns {number}
+ */
+function defaultStringLength(value) {
+  return value.length
+}
+
+/**
+ * @param {string|null|undefined} value
+ * @returns {number}
+ */
+function toAlignment(value) {
+  const code = typeof value === 'string' ? value.charCodeAt(0) : 0
+
+  return code === 67 /* `C` */ || code === 99 /* `c` */
+    ? 99 /* `c` */
+    : code === 76 /* `L` */ || code === 108 /* `l` */
+    ? 108 /* `l` */
+    : code === 82 /* `R` */ || code === 114 /* `r` */
+    ? 114 /* `r` */
+    : 0
+}
+
+
+/***/ }),
+
 /***/ 385:
 /***/ (function(__unusedmodule, exports, __webpack_require__) {
 
@@ -3188,6 +3579,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const os = __importStar(__webpack_require__(87));
+const utils_1 = __webpack_require__(82);
 /**
  * Commands
  *
@@ -3241,28 +3633,14 @@ class Command {
         return cmdStr;
     }
 }
-/**
- * Sanitizes an input into a string so it can be passed into issueCommand safely
- * @param input input to sanitize into a string
- */
-function toCommandValue(input) {
-    if (input === null || input === undefined) {
-        return '';
-    }
-    else if (typeof input === 'string' || input instanceof String) {
-        return input;
-    }
-    return JSON.stringify(input);
-}
-exports.toCommandValue = toCommandValue;
 function escapeData(s) {
-    return toCommandValue(s)
+    return utils_1.toCommandValue(s)
         .replace(/%/g, '%25')
         .replace(/\r/g, '%0D')
         .replace(/\n/g, '%0A');
 }
 function escapeProperty(s) {
-    return toCommandValue(s)
+    return utils_1.toCommandValue(s)
         .replace(/%/g, '%25')
         .replace(/\r/g, '%0D')
         .replace(/\n/g, '%0A')
@@ -4016,6 +4394,12 @@ function convertBody(buffer, headers) {
 	// html4
 	if (!res && str) {
 		res = /<meta[\s]+?http-equiv=(['"])content-type\1[\s]+?content=(['"])(.+?)\2/i.exec(str);
+		if (!res) {
+			res = /<meta[\s]+?content=(['"])(.+?)\1[\s]+?http-equiv=(['"])content-type\3/i.exec(str);
+			if (res) {
+				res.pop(); // drop last quote
+			}
+		}
 
 		if (res) {
 			res = /charset=(.*)/i.exec(res.pop());
@@ -5023,7 +5407,7 @@ function fetch(url, opts) {
 				// HTTP fetch step 5.5
 				switch (request.redirect) {
 					case 'error':
-						reject(new FetchError(`redirect mode is set to error: ${request.url}`, 'no-redirect'));
+						reject(new FetchError(`uri requested responds with a redirect, redirect mode is set to error: ${request.url}`, 'no-redirect'));
 						finalize();
 						return;
 					case 'manual':
@@ -5062,7 +5446,8 @@ function fetch(url, opts) {
 							method: request.method,
 							body: request.body,
 							signal: request.signal,
-							timeout: request.timeout
+							timeout: request.timeout,
+							size: request.size
 						};
 
 						// HTTP-redirect fetch step 9
@@ -5377,6 +5762,8 @@ var __importStar = (this && this.__importStar) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const command_1 = __webpack_require__(431);
+const file_command_1 = __webpack_require__(102);
+const utils_1 = __webpack_require__(82);
 const os = __importStar(__webpack_require__(87));
 const path = __importStar(__webpack_require__(622));
 /**
@@ -5403,9 +5790,17 @@ var ExitCode;
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function exportVariable(name, val) {
-    const convertedVal = command_1.toCommandValue(val);
+    const convertedVal = utils_1.toCommandValue(val);
     process.env[name] = convertedVal;
-    command_1.issueCommand('set-env', { name }, convertedVal);
+    const filePath = process.env['GITHUB_ENV'] || '';
+    if (filePath) {
+        const delimiter = '_GitHubActionsFileCommandDelimeter_';
+        const commandValue = `${name}<<${delimiter}${os.EOL}${convertedVal}${os.EOL}${delimiter}`;
+        file_command_1.issueCommand('ENV', commandValue);
+    }
+    else {
+        command_1.issueCommand('set-env', { name }, convertedVal);
+    }
 }
 exports.exportVariable = exportVariable;
 /**
@@ -5421,7 +5816,13 @@ exports.setSecret = setSecret;
  * @param inputPath
  */
 function addPath(inputPath) {
-    command_1.issueCommand('add-path', {}, inputPath);
+    const filePath = process.env['GITHUB_PATH'] || '';
+    if (filePath) {
+        file_command_1.issueCommand('PATH', inputPath);
+    }
+    else {
+        command_1.issueCommand('add-path', {}, inputPath);
+    }
     process.env['PATH'] = `${inputPath}${path.delimiter}${process.env['PATH']}`;
 }
 exports.addPath = addPath;
@@ -10093,4 +10494,31 @@ function onceStrict (fn) {
 
 /***/ })
 
-/******/ });
+/******/ },
+/******/ function(__webpack_require__) { // webpackRuntimeModules
+/******/ 	"use strict";
+/******/ 
+/******/ 	/* webpack/runtime/make namespace object */
+/******/ 	!function() {
+/******/ 		// define __esModule on exports
+/******/ 		__webpack_require__.r = function(exports) {
+/******/ 			if(typeof Symbol !== 'undefined' && Symbol.toStringTag) {
+/******/ 				Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' });
+/******/ 			}
+/******/ 			Object.defineProperty(exports, '__esModule', { value: true });
+/******/ 		};
+/******/ 	}();
+/******/ 	
+/******/ 	/* webpack/runtime/define property getter */
+/******/ 	!function() {
+/******/ 		// define getter function for harmony exports
+/******/ 		var hasOwnProperty = Object.prototype.hasOwnProperty;
+/******/ 		__webpack_require__.d = function(exports, name, getter) {
+/******/ 			if(!hasOwnProperty.call(exports, name)) {
+/******/ 				Object.defineProperty(exports, name, { enumerable: true, get: getter });
+/******/ 			}
+/******/ 		};
+/******/ 	}();
+/******/ 	
+/******/ }
+);

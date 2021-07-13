@@ -9,6 +9,22 @@ inputs:
     description: 'Where to find the json output of pytest-benchmark'
     required: true
     default: 'output.json'
+  benchmark-name:
+    description: 'How benchmarks are identified in the table. name or fullname'
+    required: false
+    default: 'fullname'
+  benchmark-time-unit:
+    description: 'Time unit to be used in the resulting benchmark comment'
+    required: false
+    default: 'seconds'
+  benchmark-metrics:
+    description: 'Metrics to display in table'
+    required: false
+    default: 'max,mean,ops,iterations'
+  comparison-benchmark-metric:
+    description: 'Metric to display in table for compairing with HEAD'
+    required: false
+    default: 'ops'
   comparison-benchmark-file:
     description: 'Where to find the json output of an old pytest-benchmark, for comparison. Empty for no comparison.'
     required: false
