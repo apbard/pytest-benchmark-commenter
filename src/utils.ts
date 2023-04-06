@@ -1,14 +1,10 @@
 const core = require("@actions/core");
 import { markdownTable } from "markdown-table";
 
-
 function titleCase(str) {
-  return str.replace(
-    /\w\S*/g,
-    function(txt) {
-      return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
-    }
-  );
+  return str.replace(/\w\S*/g, function (txt) {
+    return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
+  });
 }
 
 export function createMessage(
@@ -21,7 +17,7 @@ export function createMessage(
   let table: string[][] = [];
 
   // Header building
-  let headers = [...metrics.map(metric => titleCase(metric))];
+  let headers = [...metrics.map((metric) => titleCase(metric))];
   if (oldBenchmarks !== undefined) {
     headers.push(...[titleCase(compareMetric) + " on Repo `HEAD`", "Change"]);
   }
@@ -41,7 +37,8 @@ export function createMessage(
         ...[
           oldBenchmarks[benchmarkName][compareMetric].valueWithUnit,
           (
-            (benchmark[compareMetric].value /
+            ((benchmark[compareMetric].value -
+              oldBenchmarks[benchmarkName][compareMetric].value) /
               oldBenchmarks[benchmarkName][compareMetric].value) *
             100
           ).toFixed(2) + "%",
