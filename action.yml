@@ -21,6 +21,19 @@ inputs:
     description: 'Where to find the json output of an old pytest-benchmark, for comparison. Empty for no comparison.'
     required: false
     default: ''
+  comparison-higher-is-better:
+    description: 'Flag to define if and increased metric is an improvement.'
+    required: false
+    default: true
+  comparison-threshold:
+    description: 'Percentage threshold to highlight relevant changes in metric.'
+    required: false
+    default: 0
+  benchmark-title:
+    description: 'Title of the comment'
+    required: false
+    default: 'Result of Benchmark Tests'
+
   token:
     description: 'GITHUB_TOKEN'
     default: ${{ github.token }}

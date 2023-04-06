@@ -117,6 +117,9 @@ function run() {
             .getInput("benchmark-metrics")
             .split(",")
             .filter((x) => x !== "");
+        const comparisonHigherIsBetter = core.getInput("comparison-higher-is-better");
+        const comparisonThreshold = core.getInput("comparison-threshold");
+        const benchmarkTitle = core.getInput("benchmark-title");
         const benchmarks = readJSON(benchmarkFileName);
         let previousBenchmarks = undefined;
         if (previousBenchmarkFileName) {
@@ -127,7 +130,7 @@ function run() {
                 console.log("Can not read comparison file. Continue without it.");
             }
         }
-        const message = utils_1.createMessage(benchmarks, previousBenchmarks, benchmarkMetrics, comparisonMetric);
+        const message = utils_1.createMessage(benchmarks, previousBenchmarks, benchmarkMetrics, comparisonMetric, comparisonHigherIsBetter, comparisonThreshold, benchmarkTitle);
         console.log(message);
         const context = github.context;
         const pullRequestNumber = context.payload.pull_request.number;
@@ -136,7 +139,7 @@ function run() {
         const { data: comments } = yield octokit.issues.listComments(Object.assign(Object.assign({}, context.repo), { issue_number: pullRequestNumber }));
         const comment = comments.find((comment) => {
             return (comment.user.login === "github-actions[bot]" &&
-                comment.body.startsWith("## Result of Benchmark Tests\n"));
+                comment.body.includes(benchmarkTitle));
         });
         if (comment) {
             yield octokit.issues.updateComment(Object.assign(Object.assign({}, context.repo), { comment_id: comment.id, body: message }));
@@ -165,33 +168,74 @@ function titleCase(str) {
         return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
     });
 }
-function createMessage(benchmarks, oldBenchmarks, metrics, compareMetric) {
-    const title = "## Result of Benchmark Tests";
+function createMessage(benchmarks, oldBenchmarks, metrics, compareMetric, comparisonHigherIsBetter, comparisonThreshold, benchmarkTitle) {
     let table = [];
+    let improved_benchmarks = 0;
+    let worsened_benchmarks = 0;
+    let total_benchmarks = 0;
+    const green = "#35bf28";
+    const yellow = "#D29922";
+    const red = "#d91a1a";
     // Header building
-    let headers = [...metrics.map(metric => titleCase(metric))];
+    let headers = [...metrics.map((metric) => titleCase(metric))];
     if (oldBenchmarks !== undefined) {
         headers.push(...[titleCase(compareMetric) + " on Repo `HEAD`", "Change"]);
     }
     table.push(headers);
     // Table Rows per Benchmark
     for (const benchmarkName in benchmarks) {
+        total_benchmarks += 1;
         const benchmark = benchmarks[benchmarkName];
         let row = Array();
         for (const metric of metrics) {
             row.push(benchmark[metric].valueWithUnit);
         }
         if (oldBenchmarks !== undefined) {
+            let change = ((benchmark[compareMetric].value -
+                oldBenchmarks[benchmarkName][compareMetric].value) /
+                oldBenchmarks[benchmarkName][compareMetric].value) *
+                100;
+            let relevant_change = Math.abs(change) > comparisonThreshold;
+            let is_improvement = comparisonHigherIsBetter && change > 0;
+            improved_benchmarks += Number(is_improvement && relevant_change);
+            worsened_benchmarks += Number(!is_improvement && relevant_change);
+            let change_str = `${change > 0 ? "+" : ""}${change.toFixed(2)}\\\\%`;
+            if (Math.abs(change) >= 0.01) {
+                change_str = is_improvement
+                    ? `\\color{${green}}${change_str}`
+                    : `\\color{${red}}${change_str}`;
+            }
+            change_str = relevant_change ? `\\textbf{${change_str}}` : change_str;
+            change_str = `\$${change_str}\$`;
             row.push(...[
                 oldBenchmarks[benchmarkName][compareMetric].valueWithUnit,
-                (((benchmark[compareMetric].value - oldBenchmarks[benchmarkName][compareMetric].value) /
-                    oldBenchmarks[benchmarkName][compareMetric].value) *
-                    100).toFixed(2) + "%",
+                change_str,
             ]);
         }
         table.push(row);
     }
-    return title + "\n" + markdown_table_1.markdownTable(table);
+    let status = "";
+    let summary = "";
+    // if doing the comparison add a summary
+    if (oldBenchmarks !== undefined) {
+        summary = `### Total Benchmarks: ${total_benchmarks}. `;
+        summary += `Improved: $\\large\\color{${green}}${improved_benchmarks}\$. `;
+        summary += `Worsened: $\\large\\color{${red}}${worsened_benchmarks}\$.\n`;
+        if (worsened_benchmarks == 0) {
+            status = `\$\\color{${green}}\\textsf{\\Large\\&#x2714;\\kern{0.2cm}\\normalsize OK}\$`;
+        }
+        else if (improved_benchmarks >= 0) {
+            status = `\$\\color{${yellow}}\\textsf{\\Large\\&#x26A0;\\kern{0.2cm}\\normalsize Warning}\$`;
+        }
+        else {
+            status = `\$\\color{${red}}\\textsf{\\Large\\&#x26D4;\\kern{0.2cm}\\normalsize Fail}\$`;
+        }
+    }
+    let title = `## ${status} \t ${benchmarkTitle} \n`;
+    let details_title = `<summary> Expand to view detailed results </summary>`;
+    let details = `<details> ${details_title} \n\n ${markdown_table_1.markdownTable(table)} \n </details>`;
+    let message = `${title} ${summary} ${details}`;
+    return message;
 }
 exports.createMessage = createMessage;
 function inputValidate(provided, permissable, inputName) {
