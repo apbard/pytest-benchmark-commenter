@@ -1,70 +1,19 @@
 const core = require("@actions/core");
 const github = require("@actions/github");
 const fs = require("fs");
-
-class Benchmark {
-  max : number;
-  min : number;
-  mean : number;
-  stddev : number;
-
-  constructor(benchmark: any) {
-    const stats = benchmark["stats"];
-    this.max = stats["max"].toFixed(2);
-    this.min = stats["min"].toFixed(2);
-    this.mean = stats["mean"].toFixed(2);
-    this.stddev = stats["stddev"].toFixed(2);
-  }
-}
+import { Benchmark } from "./benchmark";
+import { createMessage } from "./utils";
 
 function readJSON(filename: string): any {
-  const rawdata = fs.readFileSync(filename);
-  const benchmarkJSON = JSON.parse(rawdata);
+  const rawData = fs.readFileSync(filename);
+  const benchmarkJSON = JSON.parse(rawData);
 
-  let benchmarks : { [name: string] : Benchmark} = {};
-  for(const benchmark of benchmarkJSON["benchmarks"]) {
+  let benchmarks: { [name: string]: Benchmark } = {};
+  for (const benchmark of benchmarkJSON["benchmarks"]) {
     benchmarks[benchmark["fullname"]] = new Benchmark(benchmark);
   }
 
   return benchmarks;
-}
-
-function createMessage(benchmarks: any, oldBenchmarks: any) {
-  let message = "## Result of Benchmark Tests\n";
-
-  // Table Title
-  message += "| Benchmark | Min | Max | Mean |";
-  if(oldBenchmarks !== undefined) {
-    message += " Mean on Repo `HEAD` |"
-  }
-  message += "\n";
-
-  // Table Column Definition
-  message += "| :--- | :---: | :---: | :---: |";
-  if(oldBenchmarks !== undefined) {
-    message += " :---: |"
-  }
-  message += "\n";
-
-  // Table Rows
-  for (const benchmarkName in benchmarks) {
-    const benchmark = benchmarks[benchmarkName];
-
-    message += `| ${benchmarkName}`;
-    message += `| ${benchmark.min}`;
-    message += `| ${benchmark.max}`;
-    message += `| ${benchmark.mean} `;
-    message += `+- ${benchmark.stddev} `;
-
-    if(oldBenchmarks !== undefined) {
-      const oldBenchmark = oldBenchmarks[benchmarkName]
-      message += `| ${oldBenchmark.mean} `;
-      message += `+- ${oldBenchmark.stddev} `;
-    }
-    message += "|\n"
-  }
-
-  return message;
 }
 
 async function run() {
@@ -75,18 +24,28 @@ async function run() {
 
   const githubToken = core.getInput("token");
   const benchmarkFileName = core.getInput("benchmark-file");
-  const oldBenchmarkFileName = core.getInput("comparison-benchmark-file");
+  const previousBenchmarkFileName = core.getInput("comparison-benchmark-file");
+  const comparisonMetric = core.getInput("comparison-benchmark-metric");
+  const benchmarkMetrics: string[] = core
+    .getInput("benchmark-metrics")
+    .split(",")
+    .filter((x) => x !== "");
 
   const benchmarks = readJSON(benchmarkFileName);
-  let oldBenchmarks = undefined;
-  if(oldBenchmarkFileName) {
+  let previousBenchmarks = undefined;
+  if (previousBenchmarkFileName) {
     try {
-      oldBenchmarks = readJSON(oldBenchmarkFileName);
+      previousBenchmarks = readJSON(previousBenchmarkFileName);
     } catch (error) {
       console.log("Can not read comparison file. Continue without it.");
     }
   }
-  const message = createMessage(benchmarks, oldBenchmarks);
+  const message = createMessage(
+    benchmarks,
+    previousBenchmarks,
+    benchmarkMetrics,
+    comparisonMetric
+  );
   console.log(message);
 
   const context = github.context;
@@ -111,15 +70,15 @@ async function run() {
     await octokit.issues.updateComment({
       ...context.repo,
       comment_id: comment.id,
-      body: message
+      body: message,
     });
   } else {
     await octokit.issues.createComment({
       ...context.repo,
       issue_number: pullRequestNumber,
-      body: message
+      body: message,
     });
   }
 }
 
-run().catch(error => core.setFailed("Workflow failed! " + error.message));
+run().catch((error) => core.setFailed("Workflow failed! " + error.message));

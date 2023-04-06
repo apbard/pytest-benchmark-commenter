@@ -42,6 +42,8 @@ module.exports =
 /******/ 		// Load entry module and return exports
 /******/ 		return __webpack_require__(198);
 /******/ 	};
+/******/ 	// initialize runtime
+/******/ 	runtime(__webpack_require__);
 /******/
 /******/ 	// run startup
 /******/ 	return startup();
@@ -387,10 +389,86 @@ module.exports = windowsRelease;
 
 /***/ }),
 
+/***/ 82:
+/***/ (function(__unusedmodule, exports) {
+
+"use strict";
+
+// We use any as a valid input type
+/* eslint-disable @typescript-eslint/no-explicit-any */
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.toCommandValue = void 0;
+/**
+ * Sanitizes an input into a string so it can be passed into issueCommand safely
+ * @param input input to sanitize into a string
+ */
+function toCommandValue(input) {
+    if (input === null || input === undefined) {
+        return '';
+    }
+    else if (typeof input === 'string' || input instanceof String) {
+        return input;
+    }
+    return JSON.stringify(input);
+}
+exports.toCommandValue = toCommandValue;
+//# sourceMappingURL=utils.js.map
+
+/***/ }),
+
 /***/ 87:
 /***/ (function(module) {
 
 module.exports = require("os");
+
+/***/ }),
+
+/***/ 102:
+/***/ (function(__unusedmodule, exports, __webpack_require__) {
+
+"use strict";
+
+// For internal use, subject to change.
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    Object.defineProperty(o, k2, { enumerable: true, get: function() { return m[k]; } });
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.issueCommand = void 0;
+// We use any as a valid input type
+/* eslint-disable @typescript-eslint/no-explicit-any */
+const fs = __importStar(__webpack_require__(747));
+const os = __importStar(__webpack_require__(87));
+const utils_1 = __webpack_require__(82);
+function issueCommand(command, message) {
+    const filePath = process.env[`GITHUB_${command}`];
+    if (!filePath) {
+        throw new Error(`Unable to find environment variable for file command ${command}`);
+    }
+    if (!fs.existsSync(filePath)) {
+        throw new Error(`Missing file at path: ${filePath}`);
+    }
+    fs.appendFileSync(filePath, `${utils_1.toCommandValue(message)}${os.EOL}`, {
+        encoding: 'utf8'
+    });
+}
+exports.issueCommand = issueCommand;
+//# sourceMappingURL=file-command.js.map
 
 /***/ }),
 
@@ -647,7 +725,7 @@ function checkMode (stat, options) {
 /***/ }),
 
 /***/ 198:
-/***/ (function(__unusedmodule, __unusedexports, __webpack_require__) {
+/***/ (function(__unusedmodule, exports, __webpack_require__) {
 
 "use strict";
 
@@ -660,57 +738,20 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+Object.defineProperty(exports, "__esModule", { value: true });
 const core = __webpack_require__(470);
 const github = __webpack_require__(469);
 const fs = __webpack_require__(747);
-class Benchmark {
-    constructor(benchmark) {
-        const stats = benchmark["stats"];
-        this.max = stats["max"].toFixed(2);
-        this.min = stats["min"].toFixed(2);
-        this.mean = stats["mean"].toFixed(2);
-        this.stddev = stats["stddev"].toFixed(2);
-    }
-}
+const benchmark_1 = __webpack_require__(848);
+const utils_1 = __webpack_require__(611);
 function readJSON(filename) {
-    const rawdata = fs.readFileSync(filename);
-    const benchmarkJSON = JSON.parse(rawdata);
+    const rawData = fs.readFileSync(filename);
+    const benchmarkJSON = JSON.parse(rawData);
     let benchmarks = {};
     for (const benchmark of benchmarkJSON["benchmarks"]) {
-        benchmarks[benchmark["fullname"]] = new Benchmark(benchmark);
+        benchmarks[benchmark["fullname"]] = new benchmark_1.Benchmark(benchmark);
     }
     return benchmarks;
-}
-function createMessage(benchmarks, oldBenchmarks) {
-    let message = "## Result of Benchmark Tests\n";
-    // Table Title
-    message += "| Benchmark | Min | Max | Mean |";
-    if (oldBenchmarks !== undefined) {
-        message += " Mean on Repo `HEAD` |";
-    }
-    message += "\n";
-    // Table Column Definition
-    message += "| :--- | :---: | :---: | :---: |";
-    if (oldBenchmarks !== undefined) {
-        message += " :---: |";
-    }
-    message += "\n";
-    // Table Rows
-    for (const benchmarkName in benchmarks) {
-        const benchmark = benchmarks[benchmarkName];
-        message += `| ${benchmarkName}`;
-        message += `| ${benchmark.min}`;
-        message += `| ${benchmark.max}`;
-        message += `| ${benchmark.mean} `;
-        message += `+- ${benchmark.stddev} `;
-        if (oldBenchmarks !== undefined) {
-            const oldBenchmark = oldBenchmarks[benchmarkName];
-            message += `| ${oldBenchmark.mean} `;
-            message += `+- ${oldBenchmark.stddev} `;
-        }
-        message += "|\n";
-    }
-    return message;
 }
 function run() {
     return __awaiter(this, void 0, void 0, function* () {
@@ -720,18 +761,23 @@ function run() {
         }
         const githubToken = core.getInput("token");
         const benchmarkFileName = core.getInput("benchmark-file");
-        const oldBenchmarkFileName = core.getInput("comparison-benchmark-file");
+        const previousBenchmarkFileName = core.getInput("comparison-benchmark-file");
+        const comparisonMetric = core.getInput("comparison-benchmark-metric");
+        const benchmarkMetrics = core
+            .getInput("benchmark-metrics")
+            .split(",")
+            .filter((x) => x !== "");
         const benchmarks = readJSON(benchmarkFileName);
-        let oldBenchmarks = undefined;
-        if (oldBenchmarkFileName) {
+        let previousBenchmarks = undefined;
+        if (previousBenchmarkFileName) {
             try {
-                oldBenchmarks = readJSON(oldBenchmarkFileName);
+                previousBenchmarks = readJSON(previousBenchmarkFileName);
             }
             catch (error) {
                 console.log("Can not read comparison file. Continue without it.");
             }
         }
-        const message = createMessage(benchmarks, oldBenchmarks);
+        const message = utils_1.createMessage(benchmarks, previousBenchmarks, benchmarkMetrics, comparisonMetric);
         console.log(message);
         const context = github.context;
         const pullRequestNumber = context.payload.pull_request.number;
@@ -750,7 +796,7 @@ function run() {
         }
     });
 }
-run().catch(error => core.setFailed("Workflow failed! " + error.message));
+run().catch((error) => core.setFailed("Workflow failed! " + error.message));
 
 
 /***/ }),
@@ -2693,6 +2739,273 @@ function register (state, name, method, options) {
 
 /***/ }),
 
+/***/ 366:
+/***/ (function(__unusedmodule, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export (binding) */ __webpack_require__.d(__webpack_exports__, "markdownTable", function() { return markdownTable; });
+/**
+ * @typedef MarkdownTableOptions
+ * @property {string|null|Array.<string|null|undefined>} [align]
+ * @property {boolean} [padding=true]
+ * @property {boolean} [delimiterStart=true]
+ * @property {boolean} [delimiterStart=true]
+ * @property {boolean} [delimiterEnd=true]
+ * @property {boolean} [alignDelimiters=true]
+ * @property {(value: string) => number} [stringLength]
+ */
+
+/**
+ * Create a table from a matrix of strings.
+ *
+ * @param {Array.<Array.<string|null|undefined>>} table
+ * @param {MarkdownTableOptions} [options]
+ * @returns {string}
+ */
+function markdownTable(table, options) {
+  const settings = options || {}
+  const align = (settings.align || []).concat()
+  const stringLength = settings.stringLength || defaultStringLength
+  /** @type {number[]} Character codes as symbols for alignment per column. */
+  const alignments = []
+  let rowIndex = -1
+  /** @type {string[][]} Cells per row. */
+  const cellMatrix = []
+  /** @type {number[][]} Sizes of each cell per row. */
+  const sizeMatrix = []
+  /** @type {number[]} */
+  const longestCellByColumn = []
+  let mostCellsPerRow = 0
+  /** @type {number} */
+  let columnIndex
+  /** @type {string[]} Cells of current row */
+  let row
+  /** @type {number[]} Sizes of current row */
+  let sizes
+  /** @type {number} Sizes of current cell */
+  let size
+  /** @type {string} Current cell */
+  let cell
+  /** @type {string[]} Chunks of current line. */
+  let line
+  /** @type {string} */
+  let before
+  /** @type {string} */
+  let after
+  /** @type {number} */
+  let code
+
+  // This is a superfluous loop if we don’t align delimiters, but otherwise we’d
+  // do superfluous work when aligning, so optimize for aligning.
+  while (++rowIndex < table.length) {
+    columnIndex = -1
+    row = []
+    sizes = []
+
+    if (table[rowIndex].length > mostCellsPerRow) {
+      mostCellsPerRow = table[rowIndex].length
+    }
+
+    while (++columnIndex < table[rowIndex].length) {
+      cell = serialize(table[rowIndex][columnIndex])
+
+      if (settings.alignDelimiters !== false) {
+        size = stringLength(cell)
+        sizes[columnIndex] = size
+
+        if (
+          longestCellByColumn[columnIndex] === undefined ||
+          size > longestCellByColumn[columnIndex]
+        ) {
+          longestCellByColumn[columnIndex] = size
+        }
+      }
+
+      row.push(cell)
+    }
+
+    cellMatrix[rowIndex] = row
+    sizeMatrix[rowIndex] = sizes
+  }
+
+  // Figure out which alignments to use.
+  columnIndex = -1
+
+  if (typeof align === 'object' && 'length' in align) {
+    while (++columnIndex < mostCellsPerRow) {
+      alignments[columnIndex] = toAlignment(align[columnIndex])
+    }
+  } else {
+    code = toAlignment(align)
+
+    while (++columnIndex < mostCellsPerRow) {
+      alignments[columnIndex] = code
+    }
+  }
+
+  // Inject the alignment row.
+  columnIndex = -1
+  row = []
+  sizes = []
+
+  while (++columnIndex < mostCellsPerRow) {
+    code = alignments[columnIndex]
+    before = ''
+    after = ''
+
+    if (code === 99 /* `c` */) {
+      before = ':'
+      after = ':'
+    } else if (code === 108 /* `l` */) {
+      before = ':'
+    } else if (code === 114 /* `r` */) {
+      after = ':'
+    }
+
+    // There *must* be at least one hyphen-minus in each alignment cell.
+    size =
+      settings.alignDelimiters === false
+        ? 1
+        : Math.max(
+            1,
+            longestCellByColumn[columnIndex] - before.length - after.length
+          )
+
+    cell = before + '-'.repeat(size) + after
+
+    if (settings.alignDelimiters !== false) {
+      size = before.length + size + after.length
+
+      if (size > longestCellByColumn[columnIndex]) {
+        longestCellByColumn[columnIndex] = size
+      }
+
+      sizes[columnIndex] = size
+    }
+
+    row[columnIndex] = cell
+  }
+
+  // Inject the alignment row.
+  cellMatrix.splice(1, 0, row)
+  sizeMatrix.splice(1, 0, sizes)
+
+  rowIndex = -1
+  /** @type {string[]} */
+  const lines = []
+
+  while (++rowIndex < cellMatrix.length) {
+    row = cellMatrix[rowIndex]
+    sizes = sizeMatrix[rowIndex]
+    columnIndex = -1
+    line = []
+
+    while (++columnIndex < mostCellsPerRow) {
+      cell = row[columnIndex] || ''
+      before = ''
+      after = ''
+
+      if (settings.alignDelimiters !== false) {
+        size = longestCellByColumn[columnIndex] - (sizes[columnIndex] || 0)
+        code = alignments[columnIndex]
+
+        if (code === 114 /* `r` */) {
+          before = ' '.repeat(size)
+        } else if (code === 99 /* `c` */) {
+          if (size % 2) {
+            before = ' '.repeat(size / 2 + 0.5)
+            after = ' '.repeat(size / 2 - 0.5)
+          } else {
+            before = ' '.repeat(size / 2)
+            after = before
+          }
+        } else {
+          after = ' '.repeat(size)
+        }
+      }
+
+      if (settings.delimiterStart !== false && !columnIndex) {
+        line.push('|')
+      }
+
+      if (
+        settings.padding !== false &&
+        // Don’t add the opening space if we’re not aligning and the cell is
+        // empty: there will be a closing space.
+        !(settings.alignDelimiters === false && cell === '') &&
+        (settings.delimiterStart !== false || columnIndex)
+      ) {
+        line.push(' ')
+      }
+
+      if (settings.alignDelimiters !== false) {
+        line.push(before)
+      }
+
+      line.push(cell)
+
+      if (settings.alignDelimiters !== false) {
+        line.push(after)
+      }
+
+      if (settings.padding !== false) {
+        line.push(' ')
+      }
+
+      if (
+        settings.delimiterEnd !== false ||
+        columnIndex !== mostCellsPerRow - 1
+      ) {
+        line.push('|')
+      }
+    }
+
+    lines.push(
+      settings.delimiterEnd === false
+        ? line.join('').replace(/ +$/, '')
+        : line.join('')
+    )
+  }
+
+  return lines.join('\n')
+}
+
+/**
+ * @param {string|null|undefined} [value]
+ * @returns {string}
+ */
+function serialize(value) {
+  return value === null || value === undefined ? '' : String(value)
+}
+
+/**
+ * @param {string} value
+ * @returns {number}
+ */
+function defaultStringLength(value) {
+  return value.length
+}
+
+/**
+ * @param {string|null|undefined} value
+ * @returns {number}
+ */
+function toAlignment(value) {
+  const code = typeof value === 'string' ? value.charCodeAt(0) : 0
+
+  return code === 67 /* `C` */ || code === 99 /* `c` */
+    ? 99 /* `c` */
+    : code === 76 /* `L` */ || code === 108 /* `l` */
+    ? 108 /* `l` */
+    : code === 82 /* `R` */ || code === 114 /* `r` */
+    ? 114 /* `r` */
+    : 0
+}
+
+
+/***/ }),
+
 /***/ 385:
 /***/ (function(__unusedmodule, exports, __webpack_require__) {
 
@@ -3179,15 +3492,29 @@ function errname(uv, code) {
 
 "use strict";
 
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    Object.defineProperty(o, k2, { enumerable: true, get: function() { return m[k]; } });
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
 var __importStar = (this && this.__importStar) || function (mod) {
     if (mod && mod.__esModule) return mod;
     var result = {};
-    if (mod != null) for (var k in mod) if (Object.hasOwnProperty.call(mod, k)) result[k] = mod[k];
-    result["default"] = mod;
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
     return result;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.issue = exports.issueCommand = void 0;
 const os = __importStar(__webpack_require__(87));
+const utils_1 = __webpack_require__(82);
 /**
  * Commands
  *
@@ -3241,28 +3568,14 @@ class Command {
         return cmdStr;
     }
 }
-/**
- * Sanitizes an input into a string so it can be passed into issueCommand safely
- * @param input input to sanitize into a string
- */
-function toCommandValue(input) {
-    if (input === null || input === undefined) {
-        return '';
-    }
-    else if (typeof input === 'string' || input instanceof String) {
-        return input;
-    }
-    return JSON.stringify(input);
-}
-exports.toCommandValue = toCommandValue;
 function escapeData(s) {
-    return toCommandValue(s)
+    return utils_1.toCommandValue(s)
         .replace(/%/g, '%25')
         .replace(/\r/g, '%0D')
         .replace(/\n/g, '%0A');
 }
 function escapeProperty(s) {
-    return toCommandValue(s)
+    return utils_1.toCommandValue(s)
         .replace(/%/g, '%25')
         .replace(/\r/g, '%0D')
         .replace(/\n/g, '%0A')
@@ -4016,6 +4329,12 @@ function convertBody(buffer, headers) {
 	// html4
 	if (!res && str) {
 		res = /<meta[\s]+?http-equiv=(['"])content-type\1[\s]+?content=(['"])(.+?)\2/i.exec(str);
+		if (!res) {
+			res = /<meta[\s]+?content=(['"])(.+?)\1[\s]+?http-equiv=(['"])content-type\3/i.exec(str);
+			if (res) {
+				res.pop(); // drop last quote
+			}
+		}
 
 		if (res) {
 			res = /charset=(.*)/i.exec(res.pop());
@@ -5023,7 +5342,7 @@ function fetch(url, opts) {
 				// HTTP fetch step 5.5
 				switch (request.redirect) {
 					case 'error':
-						reject(new FetchError(`redirect mode is set to error: ${request.url}`, 'no-redirect'));
+						reject(new FetchError(`uri requested responds with a redirect, redirect mode is set to error: ${request.url}`, 'no-redirect'));
 						finalize();
 						return;
 					case 'manual':
@@ -5062,7 +5381,8 @@ function fetch(url, opts) {
 							method: request.method,
 							body: request.body,
 							signal: request.signal,
-							timeout: request.timeout
+							timeout: request.timeout,
+							size: request.size
 						};
 
 						// HTTP-redirect fetch step 9
@@ -5359,6 +5679,25 @@ exports.getOctokit = getOctokit;
 
 "use strict";
 
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    Object.defineProperty(o, k2, { enumerable: true, get: function() { return m[k]; } });
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -5368,15 +5707,11 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (Object.hasOwnProperty.call(mod, k)) result[k] = mod[k];
-    result["default"] = mod;
-    return result;
-};
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.getState = exports.saveState = exports.group = exports.endGroup = exports.startGroup = exports.info = exports.warning = exports.error = exports.debug = exports.isDebug = exports.setFailed = exports.setCommandEcho = exports.setOutput = exports.getBooleanInput = exports.getMultilineInput = exports.getInput = exports.addPath = exports.setSecret = exports.exportVariable = exports.ExitCode = void 0;
 const command_1 = __webpack_require__(431);
+const file_command_1 = __webpack_require__(102);
+const utils_1 = __webpack_require__(82);
 const os = __importStar(__webpack_require__(87));
 const path = __importStar(__webpack_require__(622));
 /**
@@ -5403,9 +5738,17 @@ var ExitCode;
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function exportVariable(name, val) {
-    const convertedVal = command_1.toCommandValue(val);
+    const convertedVal = utils_1.toCommandValue(val);
     process.env[name] = convertedVal;
-    command_1.issueCommand('set-env', { name }, convertedVal);
+    const filePath = process.env['GITHUB_ENV'] || '';
+    if (filePath) {
+        const delimiter = '_GitHubActionsFileCommandDelimeter_';
+        const commandValue = `${name}<<${delimiter}${os.EOL}${convertedVal}${os.EOL}${delimiter}`;
+        file_command_1.issueCommand('ENV', commandValue);
+    }
+    else {
+        command_1.issueCommand('set-env', { name }, convertedVal);
+    }
 }
 exports.exportVariable = exportVariable;
 /**
@@ -5421,12 +5764,20 @@ exports.setSecret = setSecret;
  * @param inputPath
  */
 function addPath(inputPath) {
-    command_1.issueCommand('add-path', {}, inputPath);
+    const filePath = process.env['GITHUB_PATH'] || '';
+    if (filePath) {
+        file_command_1.issueCommand('PATH', inputPath);
+    }
+    else {
+        command_1.issueCommand('add-path', {}, inputPath);
+    }
     process.env['PATH'] = `${inputPath}${path.delimiter}${process.env['PATH']}`;
 }
 exports.addPath = addPath;
 /**
- * Gets the value of an input.  The value is also trimmed.
+ * Gets the value of an input.
+ * Unless trimWhitespace is set to false in InputOptions, the value is also trimmed.
+ * Returns an empty string if the value is not defined.
  *
  * @param     name     name of the input to get
  * @param     options  optional. See InputOptions.
@@ -5437,9 +5788,49 @@ function getInput(name, options) {
     if (options && options.required && !val) {
         throw new Error(`Input required and not supplied: ${name}`);
     }
+    if (options && options.trimWhitespace === false) {
+        return val;
+    }
     return val.trim();
 }
 exports.getInput = getInput;
+/**
+ * Gets the values of an multiline input.  Each value is also trimmed.
+ *
+ * @param     name     name of the input to get
+ * @param     options  optional. See InputOptions.
+ * @returns   string[]
+ *
+ */
+function getMultilineInput(name, options) {
+    const inputs = getInput(name, options)
+        .split('\n')
+        .filter(x => x !== '');
+    return inputs;
+}
+exports.getMultilineInput = getMultilineInput;
+/**
+ * Gets the input value of the boolean type in the YAML 1.2 "core schema" specification.
+ * Support boolean input list: `true | True | TRUE | false | False | FALSE` .
+ * The return value is also in boolean type.
+ * ref: https://yaml.org/spec/1.2/spec.html#id2804923
+ *
+ * @param     name     name of the input to get
+ * @param     options  optional. See InputOptions.
+ * @returns   boolean
+ */
+function getBooleanInput(name, options) {
+    const trueValue = ['true', 'True', 'TRUE'];
+    const falseValue = ['false', 'False', 'FALSE'];
+    const val = getInput(name, options);
+    if (trueValue.includes(val))
+        return true;
+    if (falseValue.includes(val))
+        return false;
+    throw new TypeError(`Input does not meet YAML 1.2 "Core Schema" specification: ${name}\n` +
+        `Support boolean input list: \`true | True | TRUE | false | False | FALSE\``);
+}
+exports.getBooleanInput = getBooleanInput;
 /**
  * Sets the value of an output.
  *
@@ -5448,6 +5839,7 @@ exports.getInput = getInput;
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function setOutput(name, value) {
+    process.stdout.write(os.EOL);
     command_1.issueCommand('set-output', { name }, value);
 }
 exports.setOutput = setOutput;
@@ -6492,6 +6884,60 @@ module.exports = parse;
 /***/ (function(module) {
 
 module.exports = require("http");
+
+/***/ }),
+
+/***/ 611:
+/***/ (function(__unusedmodule, exports, __webpack_require__) {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.inputValidate = exports.createMessage = void 0;
+const core = __webpack_require__(470);
+const markdown_table_1 = __webpack_require__(366);
+function titleCase(str) {
+    return str.replace(/\w\S*/g, function (txt) {
+        return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
+    });
+}
+function createMessage(benchmarks, oldBenchmarks, metrics, compareMetric) {
+    const title = "## Result of Benchmark Tests";
+    let table = [];
+    // Header building
+    let headers = [...metrics.map(metric => titleCase(metric))];
+    if (oldBenchmarks !== undefined) {
+        headers.push(...[titleCase(compareMetric) + " on Repo `HEAD`", "Change"]);
+    }
+    table.push(headers);
+    // Table Rows per Benchmark
+    for (const benchmarkName in benchmarks) {
+        const benchmark = benchmarks[benchmarkName];
+        let row = Array();
+        for (const metric of metrics) {
+            row.push(benchmark[metric].valueWithUnit);
+        }
+        if (oldBenchmarks !== undefined) {
+            row.push(...[
+                oldBenchmarks[benchmarkName][compareMetric].valueWithUnit,
+                ((benchmark[compareMetric].value /
+                    oldBenchmarks[benchmarkName][compareMetric].value) *
+                    100).toFixed(2) + "%",
+            ]);
+        }
+        table.push(row);
+    }
+    return title + "\n" + markdown_table_1.markdownTable(table);
+}
+exports.createMessage = createMessage;
+function inputValidate(provided, permissable, inputName) {
+    if (provided.filter((x) => !permissable.includes(x)).length > 0) {
+        core.setFailed(`Invalid value for ${inputName}: ${provided.join(", ")} - valid values for ${inputName} are: ${permissable.join(", ")}`);
+        return;
+    }
+}
+exports.inputValidate = inputValidate;
+
 
 /***/ }),
 
@@ -9072,6 +9518,79 @@ exports.restEndpointMethods = restEndpointMethods;
 
 /***/ }),
 
+/***/ 848:
+/***/ (function(__unusedmodule, exports) {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.Benchmark = void 0;
+class Benchmark {
+    constructor(benchmark) {
+        const stats = benchmark["stats"];
+        this.fullname = new StringUnit(benchmark["fullname"]);
+        this.iterations = new NumberUnit(stats["iterations"]);
+        this.max = new TimeUnit(stats["max"]);
+        this.mean = new TimeUnit(stats["mean"]);
+        this.median = new TimeUnit(stats["median"]);
+        this.min = new TimeUnit(stats["min"]);
+        this.name = new StringUnit(benchmark["name"]);
+        this.ops = new OperationsUnit(stats["ops"]);
+        this.rounds = new NumberUnit(stats["rounds"]);
+        this.stddev = new TimeUnit(stats["stddev"]);
+    }
+}
+exports.Benchmark = Benchmark;
+class StringUnit {
+    constructor(value) {
+        this.value = value;
+        this.valueWithUnit = value;
+    }
+}
+class NumberUnit {
+    constructor(value) {
+        this.value = value;
+        this.valueWithUnit = value;
+    }
+}
+class TimeUnit {
+    constructor(value) {
+        this.value = value;
+        this.valueWithUnit = this.convert(value);
+    }
+    convert(n) {
+        let order = -Math.floor(Math.log(n) / Math.log(10) + 1);
+        switch (true) {
+            case order >= 4:
+                return `${(n * 1000000).toFixed(4)}μs`;
+            case order >= 1:
+                return `${(n * 1000).toFixed(4)}ms`;
+            default:
+                return `${n.toFixed(4)}s`;
+        }
+    }
+}
+class OperationsUnit {
+    constructor(value) {
+        this.value = value;
+        this.valueWithUnit = this.convert(value);
+    }
+    convert(n) {
+        var order = Math.floor(Math.log(n) / Math.LN10 + 0.000000001);
+        switch (true) {
+            case order >= 6:
+                return `${(n / 1000000).toFixed(4)} MOps/s`;
+            case order >= 3:
+                return `${(n / 1000).toFixed(4)} KOps/s`;
+            default:
+                return `${n.toFixed(4)} Ops/s`;
+        }
+    }
+}
+
+
+/***/ }),
+
 /***/ 850:
 /***/ (function(__unusedmodule, exports, __webpack_require__) {
 
@@ -10093,4 +10612,31 @@ function onceStrict (fn) {
 
 /***/ })
 
-/******/ });
+/******/ },
+/******/ function(__webpack_require__) { // webpackRuntimeModules
+/******/ 	"use strict";
+/******/ 
+/******/ 	/* webpack/runtime/make namespace object */
+/******/ 	!function() {
+/******/ 		// define __esModule on exports
+/******/ 		__webpack_require__.r = function(exports) {
+/******/ 			if(typeof Symbol !== 'undefined' && Symbol.toStringTag) {
+/******/ 				Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' });
+/******/ 			}
+/******/ 			Object.defineProperty(exports, '__esModule', { value: true });
+/******/ 		};
+/******/ 	}();
+/******/ 	
+/******/ 	/* webpack/runtime/define property getter */
+/******/ 	!function() {
+/******/ 		// define getter function for harmony exports
+/******/ 		var hasOwnProperty = Object.prototype.hasOwnProperty;
+/******/ 		__webpack_require__.d = function(exports, name, getter) {
+/******/ 			if(!hasOwnProperty.call(exports, name)) {
+/******/ 				Object.defineProperty(exports, name, { enumerable: true, get: getter });
+/******/ 			}
+/******/ 		};
+/******/ 	}();
+/******/ 	
+/******/ }
+);
