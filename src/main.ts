@@ -30,6 +30,9 @@ async function run() {
     .getInput("benchmark-metrics")
     .split(",")
     .filter((x) => x !== "");
+  const comparisonHigherIsBetter = core.getInput("comparison-higher-is-better");
+  const comparisonThreshold = core.getInput("comparison-threshold");
+  const benchmarkTitle = core.getInput("benchmark-title");
 
   const benchmarks = readJSON(benchmarkFileName);
   let previousBenchmarks = undefined;
@@ -44,7 +47,10 @@ async function run() {
     benchmarks,
     previousBenchmarks,
     benchmarkMetrics,
-    comparisonMetric
+    comparisonMetric,
+    comparisonHigherIsBetter,
+    comparisonThreshold,
+    benchmarkTitle
   );
   console.log(message);
 
@@ -62,7 +68,7 @@ async function run() {
   const comment = comments.find((comment) => {
     return (
       comment.user.login === "github-actions[bot]" &&
-      comment.body.startsWith("## Result of Benchmark Tests\n")
+      comment.body.includes(benchmarkTitle)
     );
   });
 
